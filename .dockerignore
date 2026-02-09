@@ -1,0 +1,25 @@
+# ESPHome build artifacts
+.esphome/
+*.bin
+*.elf
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Documentation
+README.md

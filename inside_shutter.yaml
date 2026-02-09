@@ -1,0 +1,166 @@
+substitutions:
+  name: "inside-shutter"
+  friendly_name: "Inside Shutter Controller"
+
+esphome:
+  name: ${name}
+external_components:
+  - source:
+      type: local
+      path: components
+
+uart_reader:
+  uart_id: uart_bus
+  text_sensor_id: uart_message
+
+esp32:
+  board: wt32-eth01
+  framework:
+    type: arduino
+
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+
+ota:
+  - platform: esphome
+
+logger:
+  baud_rate: 115200
+
+uart:
+  id: uart_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO5
+  baud_rate: 9600
+  debug:
+    direction: BOTH
+    dummy_receiver: false
+
+# Session Management
+globals:
+  - id: session_active
+    type: bool
+    initial_value: 'false'
+
+script:
+  - id: start_session
+    mode: RESTART
+    then:
+      - globals.set:
+          id: session_active
+          value: 'true'
+      - logger.log: "Session STARTED - Access Granted"
+      # - output.turn_on: buzzer_pwm (If we had one)
+      - delay: 60s
+      - globals.set:
+          id: session_active
+          value: 'false'
+      - logger.log: "Session ENDED"
+
+text_sensor:
+  - platform: template
+    name: "UART Message"
+    id: uart_message
+    on_value:
+      then:
+        - lambda: |-
+            ESP_LOGD("uart_logic", "Received RAW: %s", x.c_str());
+            std::string msg = x;
+            if (msg.find("PIN:") == 0) {
+              std::string pin = msg.substr(4);
+              if (pin == "1234") { // Using hardcoded for now, secrets in lambda is tricky in ESPHome
+                 id(start_session).execute();
+              } else {
+                 ESP_LOGW("auth", "Invalid PIN: %s", pin.c_str());
+              }
+            } else if (msg.find("TAG:") == 0) {
+              std::string tag = msg.substr(4);
+              if (tag == "55-7F-63-06") {
+                 id(start_session).execute();
+              } else {
+                 ESP_LOGW("auth", "Invalid TAG: %s", tag.c_str());
+              }
+            } else if (msg.find("CMD:") == 0) {
+              std::string cmd = msg.substr(4);
+              if (cmd == "STOP") {
+                id(motor_up_relay).turn_off();
+                id(motor_down_relay).turn_off();
+                ESP_LOGI("auth", "Emergency STOP triggered");
+              } else if (id(session_active)) {
+                if (cmd == "UP") {
+                  id(motor_down_relay).turn_off();
+                  id(motor_up_relay).turn_on();
+                } else if (cmd == "DOWN") {
+                  id(motor_up_relay).turn_off();
+                  id(motor_down_relay).turn_on();
+                }
+              } else {
+                ESP_LOGW("auth", "Ignored: Session inactive");
+              }
+            }
+
+# Motor Control Relays
+
+
+switch:
+  - platform: gpio
+    pin: GPIO4
+    name: "Motor UP Relay"
+    id: motor_up_relay
+    interlock: [motor_down_relay]
+    restore_mode: ALWAYS_OFF
+  
+  - platform: gpio
+    pin: GPIO2 # Often Onboard LED
+    name: "Motor DOWN Relay"
+    id: motor_down_relay
+    interlock: [motor_up_relay]
+    restore_mode: ALWAYS_OFF
+
+# Manual Control Buttons
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO15
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Manual UP Button"
+    id: manual_up_button
+    on_press:
+      - logger.log: "Manual UP Pressed"
+      - switch.turn_off: motor_down_relay
+      - switch.turn_on: motor_up_relay
+    on_release:
+      - switch.turn_off: motor_up_relay
+
+  - platform: gpio
+    pin:
+      number: GPIO14
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Manual DOWN Button"
+    id: manual_down_button
+    on_press:
+      - logger.log: "Manual DOWN Pressed"
+      - switch.turn_off: motor_up_relay
+      - switch.turn_on: motor_down_relay
+    on_release:
+      - switch.turn_off: motor_down_relay
+
+  - platform: gpio
+    pin:
+      number: GPIO12
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "Manual STOP Button"
+    id: manual_stop_button
+    on_press:
+      - logger.log: "Manual STOP Pressed"
+      - switch.turn_off: motor_up_relay
+      - switch.turn_off: motor_down_relay
+
+

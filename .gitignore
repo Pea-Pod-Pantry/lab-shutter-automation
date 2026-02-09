@@ -1,0 +1,17 @@
+# ESPHome
+.esphome/
+secrets.yaml
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+
+# Build artifacts
+build/
+firmware.bin
+
+# Python
+__pycache__/
+*.py[cod]

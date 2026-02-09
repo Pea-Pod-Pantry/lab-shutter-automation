@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  esphome:
+    build: .
+    container_name: esphome-dev
+    restart: unless-stopped
+    volumes:
+      # Mount current directory for YAML configs
+      - ./:/config
+      # Persistent build cache to speed up compilations
+      - esphome-build-cache:/config/.esphome
+    environment:
+      - ESPHOME_DASHBOARD_USE_PING=true
+    ports:
+      - "6052:6052"
+    # Note: USB device passthrough doesn't work natively on macOS
+    # For initial flash, use one of these methods:
+    # 1. Flash outside container using esphome CLI installed via pip
+    # 2. Use socat to forward USB serial port (see README.md)
+    # 3. Use ESPHome web installer for initial flash
+    # After initial flash, OTA updates work perfectly from container
+
+    # Uncomment for Linux hosts with USB devices:
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    # privileged: true
+
+volumes:
+  esphome-build-cache:
+    driver: local
