@@ -4,6 +4,24 @@ substitutions:
 
 esphome:
   name: ${name}
+  on_boot:
+    - priority: 600
+      then:
+        - lambda: |-
+            if (id(master_pin) == 0) {
+              // use esp_random() for hardware RNG, modulus for 6 digits
+              id(master_pin) = (esp_random() % 900000) + 100000;
+              ESP_LOGI("setup", "GENERATED NEW MASTER PIN: %d", id(master_pin));
+            } else {
+              ESP_LOGI("setup", "Master PIN already set.");
+            }
+    - priority: -10
+      then:
+        - lambda: |-
+             // Force update the display sensor so it shows up on the Web UI immediately
+             if (id(master_pin) != 0) {
+               id(master_pin_display).publish_state(to_string(id(master_pin)));
+             }
 external_components:
   - source:
       type: local
@@ -67,26 +85,7 @@ globals:
     type: bool
     initial_value: 'false'
 
-esphome:
-  name: ${name}
-  on_boot:
-    - priority: 600
-      then:
-        - lambda: |-
-            if (id(master_pin) == 0) {
-              // use esp_random() for hardware RNG, modulus for 6 digits
-              id(master_pin) = (esp_random() % 900000) + 100000;
-              ESP_LOGI("setup", "GENERATED NEW MASTER PIN: %d", id(master_pin));
-            } else {
-              ESP_LOGI("setup", "Master PIN already set.");
-            }
-    - priority: -10
-      then:
-        - lambda: |-
-             // Force update the display sensor so it shows up on the Web UI immediately
-             if (id(master_pin) != 0) {
-               id(master_pin_display).publish_state(to_string(id(master_pin)));
-             }
+
 
 script:
   - id: start_session
