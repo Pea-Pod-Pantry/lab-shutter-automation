@@ -40,8 +40,9 @@ The system consists of two ESP32 units communicating via a wired UART link:
 | :--- | :--- | :--- |
 | **UART TX** | **GPIO17** | Connects to Outside Unit RX |
 | **UART RX** | **GPIO5** | Connects to Outside Unit TX |
-| **Motor UP Relay** | GPIO4 | Controls Up movement |
-| **Motor DOWN Relay** | GPIO2 | Controls Down movement |
+| **Motor UP Relay** | GPIO4 | Controls Up movement (Pulse 250ms) |
+| **Motor DOWN Relay** | GPIO2 | Controls Down movement (Pulse 250ms) |
+| **Motor STOP Relay** | **GPIO32** | Controls Stop mechanism (Pulse 250ms) |
 | **Manual UP Btn** | GPIO15 | Physical button (Input Pullup) |
 | **Manual DOWN Btn** | GPIO14 | Physical button (Input Pullup) |
 | **Manual STOP Btn** | GPIO12 | Physical button (Input Pullup) |

@@ -87,16 +87,13 @@ text_sensor:
             } else if (msg.find("CMD:") == 0) {
               std::string cmd = msg.substr(4);
               if (cmd == "STOP") {
-                id(motor_up_relay).turn_off();
-                id(motor_down_relay).turn_off();
+                id(shutter_cover).make_call().set_command_stop().perform();
                 ESP_LOGI("auth", "Emergency STOP triggered");
               } else if (id(session_active)) {
                 if (cmd == "UP") {
-                  id(motor_down_relay).turn_off();
-                  id(motor_up_relay).turn_on();
+                  id(shutter_cover).make_call().set_command_open().perform();
                 } else if (cmd == "DOWN") {
-                  id(motor_up_relay).turn_off();
-                  id(motor_down_relay).turn_on();
+                  id(shutter_cover).make_call().set_command_close().perform();
                 }
               } else {
                 ESP_LOGW("auth", "Ignored: Session inactive");
@@ -106,20 +103,48 @@ text_sensor:
 # Motor Control Relays
 
 
+cover:
+  - platform: template
+    name: "Shutter Control"
+    id: shutter_cover
+    open_action:
+      - switch.turn_on: motor_up_relay
+    close_action:
+      - switch.turn_on: motor_down_relay
+    stop_action:
+      - switch.turn_on: motor_stop_relay
+    optimistic: true
+
 switch:
   - platform: gpio
     pin: GPIO4
     name: "Motor UP Relay"
     id: motor_up_relay
-    interlock: [motor_down_relay]
+    interlock: [motor_down_relay, motor_stop_relay]
     restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - delay: 250ms
+      - switch.turn_off: motor_up_relay
   
   - platform: gpio
     pin: GPIO2 # Often Onboard LED
     name: "Motor DOWN Relay"
     id: motor_down_relay
-    interlock: [motor_up_relay]
+    interlock: [motor_up_relay, motor_stop_relay]
     restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - delay: 250ms
+      - switch.turn_off: motor_down_relay
+
+  - platform: gpio
+    pin: GPIO32
+    name: "Motor STOP Relay"
+    id: motor_stop_relay
+    interlock: [motor_up_relay, motor_down_relay]
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+      - delay: 250ms
+      - switch.turn_off: motor_stop_relay
 
 # Manual Control Buttons
 binary_sensor:
@@ -132,10 +157,7 @@ binary_sensor:
     id: manual_up_button
     on_press:
       - logger.log: "Manual UP Pressed"
-      - switch.turn_off: motor_down_relay
-      - switch.turn_on: motor_up_relay
-    on_release:
-      - switch.turn_off: motor_up_relay
+      - cover.open: shutter_cover
 
   - platform: gpio
     pin:
@@ -146,10 +168,7 @@ binary_sensor:
     id: manual_down_button
     on_press:
       - logger.log: "Manual DOWN Pressed"
-      - switch.turn_off: motor_up_relay
-      - switch.turn_on: motor_down_relay
-    on_release:
-      - switch.turn_off: motor_down_relay
+      - cover.close: shutter_cover
 
   - platform: gpio
     pin:
@@ -160,7 +179,6 @@ binary_sensor:
     id: manual_stop_button
     on_press:
       - logger.log: "Manual STOP Pressed"
-      - switch.turn_off: motor_up_relay
-      - switch.turn_off: motor_down_relay
+      - cover.stop: shutter_cover
 
 
