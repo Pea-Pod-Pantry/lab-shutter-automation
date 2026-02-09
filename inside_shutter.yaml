@@ -106,6 +106,7 @@ text:
   - platform: template
     name: "Admin PIN Input"
     id: admin_pin_input
+    mode: TEXT
     optimistic: true
     on_value:
       then:
@@ -121,6 +122,7 @@ text:
   - platform: template
     name: "Set User PIN"
     id: set_user_pin_input
+    mode: TEXT
     optimistic: true
     min_length: 4
     max_length: 4
