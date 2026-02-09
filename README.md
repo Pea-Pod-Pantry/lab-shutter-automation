@@ -54,15 +54,30 @@ The system consists of two ESP32 units communicating via a wired UART link:
 
 ### 1. Configuration to `secrets.yaml`
 
-Create a `secrets.yaml` file in the project root with your credentials:
+Create a `secrets.yaml` file in the project root with your WiFi credentials:
 
 ```yaml
 wifi_ssid: "Your_SSID"
 wifi_password: "Your_Password"
-
-valid_pin: "1234"           # PIN to unlock the door
-valid_tag: "55-7F-63-06"    # RFID Tag ID to unlock the door
 ```
+
+> [!NOTE]
+> **PIN & Tag Configuration**: You no longer need to hardcode `valid_pin` or `valid_tag` in `secrets.yaml`. These are now managed dynamically via the Web Interface.
+
+### 2. Initial Setup & Global PIN
+
+On the very first boot, the Inside Unit will generate a **Random 6-digit Master PIN**.
+
+1.  **Find the Master PIN**: Monitor the ESPHome logs via USB or the Dashboard. Look for a log line saying:
+    `[setup] GENERATED NEW MASTER PIN: XXXXXX`
+2.  **Access Web Interface**: Go to `http://<device_ip>` in your browser.
+3.  **Unlock Admin Mode**: Enter the Master PIN into the "Admin PIN Input" field.
+4.  **Set User PIN**: Enter your desired 4-digit User PIN (for daily use) and it will be saved.
+5.  **Register Tags**:
+    *   Click **Unlock Admin Mode** (if not already unlocked).
+    *   Click **Toggle Card Registration** to enable learning mode.
+    *   Scan your NFC tags at the Outside Unit. Watch the logs/web UI for "New TAG Registered".
+    *   Click **Toggle Card Registration** again to save and exit learning mode.
 
 ### 2. Flash the Devices
 

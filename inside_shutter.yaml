@@ -40,11 +40,45 @@ uart:
     direction: BOTH
     dummy_receiver: false
 
+web_server:
+  port: 80
+
 # Session Management
 globals:
   - id: session_active
     type: bool
     initial_value: 'false'
+  - id: master_pin
+    type: int
+    restore_value: yes
+    initial_value: '0' # 0 indicates not set/needs generation
+  - id: user_pin
+    type: std::string
+    restore_value: yes
+    initial_value: '"1234"' # Default user PIN
+  - id: auth_tags
+    type: std::string
+    restore_value: yes
+    initial_value: '""' # Comma separated list of tags
+  - id: admin_mode
+    type: bool
+    initial_value: 'false'
+  - id: registration_mode
+    type: bool
+    initial_value: 'false'
+
+esphome:
+  name: ${name}
+  on_boot:
+    priority: 600
+    then:
+      - lambda: |-
+          if (id(master_pin) == 0) {
+            id(master_pin) = random(100000, 999999);
+            ESP_LOGI("setup", "GENERATED NEW MASTER PIN: %d", id(master_pin));
+          } else {
+            ESP_LOGI("setup", "Master PIN already set.");
+          }
 
 script:
   - id: start_session
@@ -61,7 +95,92 @@ script:
           value: 'false'
       - logger.log: "Session ENDED"
 
+text:
+  - platform: template
+    name: "Admin PIN Input"
+    id: admin_pin_input
+    optimistic: true
+    on_value:
+      then:
+        - lambda: |-
+             int input_pin = atoi(x.c_str());
+             if (input_pin == id(master_pin)) {
+               id(admin_mode) = true;
+               ESP_LOGI("admin", "Admin Mode UNLOCKED via Web");
+             } else {
+               ESP_LOGW("admin", "Invalid Master PIN attempt");
+             }
+
+  - platform: template
+    name: "Set User PIN"
+    id: set_user_pin_input
+    optimistic: true
+    min_length: 4
+    max_length: 4
+    on_value:
+      then:
+        - lambda: |-
+            if (id(admin_mode)) {
+              id(user_pin) = x;
+              ESP_LOGI("admin", "User PIN updated to: %s", x.c_str());
+            } else {
+              ESP_LOGW("admin", "Cannot set User PIN: Admin not unlocked");
+            }
+
+button:
+  - platform: template
+    name: "Unlock Admin Mode"
+    id: unlock_admin_btn
+    on_press:
+      - lambda: |-
+          // This button is just a trigger, the text input logic handles the check.
+          // Or we could move the check here if we want a "Submit" style.
+          // For now the text input handler does it immediately.
+          ESP_LOGI("admin", "Admin Unlock Requested (check Input field)");
+
+  - platform: template
+    name: "Toggle Card Registration"
+    id: toggle_registration_btn
+    on_press:
+      - lambda: |-
+          if (id(admin_mode)) {
+            id(registration_mode) = !id(registration_mode);
+            if (id(registration_mode)) {
+               ESP_LOGI("admin", "Registration Mode ENABLED");
+            } else {
+               ESP_LOGI("admin", "Registration Mode DISABLED");
+            }
+          } else {
+            ESP_LOGW("admin", "Cannot toggle registration: Admin not unlocked");
+          }
+
+  - platform: template
+    name: "Clear All Cards"
+    id: clear_cards_btn
+    on_press:
+      - lambda: |-
+          if (id(admin_mode)) {
+            id(auth_tags) = "";
+            ESP_LOGI("admin", "All cards CLEARED");
+          } else {
+             ESP_LOGW("admin", "Cannot clear cards: Admin not unlocked");
+          }
+
 text_sensor:
+  - platform: template
+    name: "Master PIN Display"
+    id: master_pin_display
+    update_interval: 60s
+    lambda: |-
+      return to_string(id(master_pin));
+
+  - platform: template
+    name: "Registered Tags"
+    id: registered_tags_display
+    update_interval: 60s
+    lambda: |-
+      return id(auth_tags);
+
   - platform: template
     name: "UART Message"
     id: uart_message
@@ -72,18 +191,34 @@ text_sensor:
             std::string msg = x;
             if (msg.find("PIN:") == 0) {
               std::string pin = msg.substr(4);
-              if (pin == "1234") { // Using hardcoded for now, secrets in lambda is tricky in ESPHome
+              if (pin == id(user_pin)) {
                  id(start_session).execute();
               } else {
                  ESP_LOGW("auth", "Invalid PIN: %s", pin.c_str());
               }
             } else if (msg.find("TAG:") == 0) {
               std::string tag = msg.substr(4);
-              if (tag == "55-7F-63-06") {
-                 id(start_session).execute();
+              
+              if (id(registration_mode)) {
+                 // Register the tag
+                 if (id(auth_tags).find(tag) == std::string::npos) {
+                     if (id(auth_tags).length() > 0) {
+                        id(auth_tags) += ",";
+                     }
+                     id(auth_tags) += tag;
+                     ESP_LOGI("auth", "New TAG Registered: %s", tag.c_str());
+                 } else {
+                     ESP_LOGI("auth", "TAG already registered: %s", tag.c_str());
+                 }
               } else {
-                 ESP_LOGW("auth", "Invalid TAG: %s", tag.c_str());
+                 // Authenticate
+                 if (id(auth_tags).find(tag) != std::string::npos) {
+                    id(start_session).execute();
+                 } else {
+                    ESP_LOGW("auth", "Unknown TAG: %s", tag.c_str());
+                 }
               }
+
             } else if (msg.find("CMD:") == 0) {
               std::string cmd = msg.substr(4);
               if (cmd == "STOP") {
