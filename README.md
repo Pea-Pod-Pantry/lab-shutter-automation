@@ -68,10 +68,10 @@ wifi_password: "Your_Password"
 
 On the very first boot, the Inside Unit will generate a **Random 6-digit Master PIN**.
 
-1.  **Find the Master PIN**: Monitor the ESPHome logs via USB or the Dashboard. Look for a log line saying:
-    `[setup] GENERATED NEW MASTER PIN: XXXXXX`
-2.  **Access Web Interface**: Go to `http://<device_ip>` in your browser.
-3.  **Unlock Admin Mode**: Enter the Master PIN into the "Admin PIN Input" field.
+1.  **Access Web Interface**: Go to `http://<device_ip>` in your browser.
+2.  **Find the Master PIN**: Look for the **"Master PIN Display"** sensor value on the dashboard.
+    *   *(Backup)*: You can also find it in the USB logs: `[setup] GENERATED NEW MASTER PIN: XXXXXX`.
+3.  **Unlock Admin Mode**: Enter the displayed Master PIN into the "Admin PIN Input" field.
 4.  **Set User PIN**: Enter your desired 4-digit User PIN (for daily use) and it will be saved.
 5.  **Register Tags**:
     *   Click **Unlock Admin Mode** (if not already unlocked).
