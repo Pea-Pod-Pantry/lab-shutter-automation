@@ -4,6 +4,24 @@ substitutions:
 
 esphome:
   name: ${name}
+  on_boot:
+    - priority: 600
+      then:
+        - lambda: |-
+            if (id(master_pin) == 0) {
+              // use esp_random() for hardware RNG, modulus for 6 digits
+              id(master_pin) = (esp_random() % 900000) + 100000;
+              ESP_LOGI("setup", "GENERATED NEW MASTER PIN: %d", id(master_pin));
+            } else {
+              ESP_LOGI("setup", "Master PIN already set.");
+            }
+    - priority: -10
+      then:
+        - lambda: |-
+             // Force update the display sensor so it shows up on the Web UI immediately
+             if (id(master_pin) != 0) {
+               id(master_pin_display).publish_state(to_string(id(master_pin)));
+             }
 external_components:
   - source:
       type: local
@@ -40,9 +58,28 @@ uart:
     direction: BOTH
     dummy_receiver: false
 
+web_server:
+  port: 80
+
+# Session Management
 # Session Management
 globals:
   - id: session_active
+    type: bool
+    initial_value: 'false'
+  - id: master_pin
+    type: int
+    restore_value: yes
+    initial_value: '0' # 0 indicates not set/needs generation
+  - id: user_pin
+    type: std::string
+    restore_value: yes
+    initial_value: '"1234"' # Default user PIN
+  - id: auth_tags
+    type: std::string
+    restore_value: yes
+    initial_value: '""' # Comma separated list of tags
+  - id: registration_mode
     type: bool
     initial_value: 'false'
 
@@ -61,7 +98,100 @@ script:
           value: 'false'
       - logger.log: "Session ENDED"
 
+  - id: start_registration_session
+    mode: RESTART
+    then:
+      - globals.set:
+          id: registration_mode
+          value: 'true'
+      - logger.log: "Registration Session STARTED - Scan Tag Now"
+      # Blink LED or Beep? (Not implemented, just log for now)
+      - delay: 60s
+      - globals.set:
+          id: registration_mode
+          value: 'false'
+      - logger.log: "Registration Session ENDED"
+
+  - id: safe_open
+    mode: RESTART
+    then:
+      - switch.turn_off: motor_down_relay
+      - switch.turn_off: motor_stop_relay
+      - delay: 100ms
+      - switch.turn_on: motor_up_relay
+
+  - id: safe_close
+    mode: RESTART
+    then:
+      - switch.turn_off: motor_up_relay
+      - switch.turn_off: motor_stop_relay
+      - delay: 100ms
+      - switch.turn_on: motor_down_relay
+
+  - id: safe_stop
+    mode: RESTART
+    then:
+      - switch.turn_off: motor_up_relay
+      - switch.turn_off: motor_down_relay
+      - delay: 100ms
+      - switch.turn_on: motor_stop_relay
+
+text:
+  - platform: template
+    name: "Set Master PIN (6-Digit)"
+    id: set_master_pin_input
+    mode: TEXT
+    optimistic: true
+    min_length: 6
+    max_length: 6
+    on_value:
+      then:
+        - lambda: |-
+             int input_pin = atoi(x.c_str());
+             if (input_pin >= 100000 && input_pin <= 999999) {
+               id(master_pin) = input_pin;
+               ESP_LOGI("admin", "Master PIN updated check via Web: %d", id(master_pin));
+               // Force update display
+               id(master_pin_display).publish_state(to_string(id(master_pin)));
+             } else {
+               ESP_LOGW("admin", "Invalid Master PIN format. Must be 6 digits.");
+             }
+
+  - platform: template
+    name: "Set User PIN (4-Digit)"
+    id: set_user_pin_input
+    mode: TEXT
+    optimistic: true
+    min_length: 4
+    max_length: 4
+    on_value:
+      then:
+        - lambda: |-
+            id(user_pin) = x;
+            ESP_LOGI("admin", "User PIN updated to: %s", x.c_str());
+
+button:
+  - platform: template
+    name: "Clear All Cards"
+    id: clear_cards_btn
+    on_press:
+      - lambda: |-
+          id(auth_tags) = "";
+          ESP_LOGI("admin", "All cards CLEARED");
+
 text_sensor:
+  - platform: template
+    name: "Master PIN Display"
+    id: master_pin_display
+    # Updated via on_boot to be static and immediate or via Set Master PIN
+
+  - platform: template
+    name: "Registered Tags"
+    id: registered_tags_display
+    update_interval: 60s
+    lambda: |-
+      return id(auth_tags);
+
   - platform: template
     name: "UART Message"
     id: uart_message
@@ -72,18 +202,50 @@ text_sensor:
             std::string msg = x;
             if (msg.find("PIN:") == 0) {
               std::string pin = msg.substr(4);
-              if (pin == "1234") { // Using hardcoded for now, secrets in lambda is tricky in ESPHome
-                 id(start_session).execute();
+              if (pin.length() == 6) {
+                 int pin_int = atoi(pin.c_str());
+                 if (pin_int == id(master_pin)) {
+                    id(start_registration_session).execute();
+                 } else {
+                    ESP_LOGW("auth", "Invalid Master PIN");
+                 }
+              } else if (pin.length() == 4) {
+                 if (pin == id(user_pin)) {
+                    id(start_session).execute();
+                 } else {
+                    ESP_LOGW("auth", "Invalid User PIN");
+                 }
               } else {
-                 ESP_LOGW("auth", "Invalid PIN: %s", pin.c_str());
+                 ESP_LOGW("auth", "Invalid PIN Length");
               }
             } else if (msg.find("TAG:") == 0) {
               std::string tag = msg.substr(4);
-              if (tag == "55-7F-63-06") {
-                 id(start_session).execute();
+              
+              if (id(registration_mode)) {
+                 // Register the tag
+                 if (id(auth_tags).find(tag) == std::string::npos) {
+                     if (id(auth_tags).length() > 0) {
+                        id(auth_tags) += ",";
+                     }
+                     id(auth_tags) += tag;
+                     ESP_LOGI("auth", "New TAG Registered: %s", tag.c_str());
+                     // Close session on success? Or allow multiple? User said "close the session"
+                     id(registration_mode) = false;
+                     id(start_registration_session).stop();
+                     ESP_LOGI("auth", "Registration Session Closed");
+
+                 } else {
+                     ESP_LOGI("auth", "TAG already registered: %s", tag.c_str());
+                 }
               } else {
-                 ESP_LOGW("auth", "Invalid TAG: %s", tag.c_str());
+                 // Authenticate
+                 if (id(auth_tags).find(tag) != std::string::npos) {
+                    id(start_session).execute();
+                 } else {
+                    ESP_LOGW("auth", "Unknown TAG: %s", tag.c_str());
+                 }
               }
+
             } else if (msg.find("CMD:") == 0) {
               std::string cmd = msg.substr(4);
               if (cmd == "STOP") {
@@ -108,11 +270,11 @@ cover:
     name: "Shutter Control"
     id: shutter_cover
     open_action:
-      - switch.turn_on: motor_up_relay
+      - script.execute: safe_open
     close_action:
-      - switch.turn_on: motor_down_relay
+      - script.execute: safe_close
     stop_action:
-      - switch.turn_on: motor_stop_relay
+      - script.execute: safe_stop
     optimistic: true
 
 switch:

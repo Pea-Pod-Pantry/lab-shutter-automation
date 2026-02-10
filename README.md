@@ -54,15 +54,35 @@ The system consists of two ESP32 units communicating via a wired UART link:
 
 ### 1. Configuration to `secrets.yaml`
 
-Create a `secrets.yaml` file in the project root with your credentials:
+Create a `secrets.yaml` file in the project root with your WiFi credentials:
 
 ```yaml
 wifi_ssid: "Your_SSID"
 wifi_password: "Your_Password"
-
-valid_pin: "1234"           # PIN to unlock the door
-valid_tag: "55-7F-63-06"    # RFID Tag ID to unlock the door
 ```
+
+> [!NOTE]
+> **PIN & Tag Configuration**: You no longer need to hardcode `valid_pin` or `valid_tag` in `secrets.yaml`. These are now managed dynamically via the Web Interface.
+
+### 2. Initial Setup & Global PIN
+
+On the very first boot, the Inside Unit will generate a **Random 6-digit Master PIN**.
+
+### 2. Initial Setup & Global PIN
+
+On the very first boot, the Inside Unit will generate a **Random 6-digit Master PIN**.
+
+1.  **Access Web Interface**: Go to `http://<device_ip>` to view or change your PINs.
+    *   **Master PIN (6-digits)**: Used to register new NFC tags.
+    *   **User PIN (4-digits)**: Used to operate the door daily.
+2.  **Register Tags (Keypad)**:
+    *   Enter the **Master PIN** followed by `#` on the outside keypad (e.g., `123456#`).
+    *   The system enters "Registration Mode" for 60 seconds.
+    *   Scan your NFC tag. Watch for the confirmation beep/log.
+3.  **Operate Door**:
+    *   **PIN**: Enter **User PIN** + `#` (e.g., `1111#`).
+    *   **NFC**: Scan a registered tag.
+    *   Then press **A** (Open) or **B** (Close).
 
 ### 2. Flash the Devices
 
