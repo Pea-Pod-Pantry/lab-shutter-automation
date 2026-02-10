@@ -68,16 +68,21 @@ wifi_password: "Your_Password"
 
 On the very first boot, the Inside Unit will generate a **Random 6-digit Master PIN**.
 
-1.  **Access Web Interface**: Go to `http://<device_ip>` in your browser.
-2.  **Find the Master PIN**: Look for the **"Master PIN Display"** sensor value on the dashboard.
-    *   *(Backup)*: You can also find it in the USB logs: `[setup] GENERATED NEW MASTER PIN: XXXXXX`.
-3.  **Unlock Admin Mode**: Enter the displayed Master PIN into the "Admin PIN Input" field.
-4.  **Set User PIN**: Enter your desired 4-digit User PIN (for daily use) and it will be saved.
-5.  **Register Tags**:
-    *   Click **Unlock Admin Mode** (if not already unlocked).
-    *   Click **Toggle Card Registration** to enable learning mode.
-    *   Scan your NFC tags at the Outside Unit. Watch the logs/web UI for "New TAG Registered".
-    *   Click **Toggle Card Registration** again to save and exit learning mode.
+### 2. Initial Setup & Global PIN
+
+On the very first boot, the Inside Unit will generate a **Random 6-digit Master PIN**.
+
+1.  **Access Web Interface**: Go to `http://<device_ip>` to view or change your PINs.
+    *   **Master PIN (6-digits)**: Used to register new NFC tags.
+    *   **User PIN (4-digits)**: Used to operate the door daily.
+2.  **Register Tags (Keypad)**:
+    *   Enter the **Master PIN** followed by `#` on the outside keypad (e.g., `123456#`).
+    *   The system enters "Registration Mode" for 60 seconds.
+    *   Scan your NFC tag. Watch for the confirmation beep/log.
+3.  **Operate Door**:
+    *   **PIN**: Enter **User PIN** + `#` (e.g., `1111#`).
+    *   **NFC**: Scan a registered tag.
+    *   Then press **A** (Open) or **B** (Close).
 
 ### 2. Flash the Devices
 

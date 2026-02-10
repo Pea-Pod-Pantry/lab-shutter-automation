@@ -62,6 +62,7 @@ web_server:
   port: 80
 
 # Session Management
+# Session Management
 globals:
   - id: session_active
     type: bool
@@ -78,14 +79,9 @@ globals:
     type: std::string
     restore_value: yes
     initial_value: '""' # Comma separated list of tags
-  - id: admin_mode
-    type: bool
-    initial_value: 'false'
   - id: registration_mode
     type: bool
     initial_value: 'false'
-
-
 
 script:
   - id: start_session
@@ -102,25 +98,43 @@ script:
           value: 'false'
       - logger.log: "Session ENDED"
 
+  - id: start_registration_session
+    mode: RESTART
+    then:
+      - globals.set:
+          id: registration_mode
+          value: 'true'
+      - logger.log: "Registration Session STARTED - Scan Tag Now"
+      # Blink LED or Beep? (Not implemented, just log for now)
+      - delay: 60s
+      - globals.set:
+          id: registration_mode
+          value: 'false'
+      - logger.log: "Registration Session ENDED"
+
 text:
   - platform: template
-    name: "Admin PIN Input"
-    id: admin_pin_input
+    name: "Set Master PIN (6-Digit)"
+    id: set_master_pin_input
     mode: TEXT
     optimistic: true
+    min_length: 6
+    max_length: 6
     on_value:
       then:
         - lambda: |-
              int input_pin = atoi(x.c_str());
-             if (input_pin == id(master_pin)) {
-               id(admin_mode) = true;
-               ESP_LOGI("admin", "Admin Mode UNLOCKED via Web");
+             if (input_pin >= 100000 && input_pin <= 999999) {
+               id(master_pin) = input_pin;
+               ESP_LOGI("admin", "Master PIN updated check via Web: %d", id(master_pin));
+               // Force update display
+               id(master_pin_display).publish_state(to_string(id(master_pin)));
              } else {
-               ESP_LOGW("admin", "Invalid Master PIN attempt");
+               ESP_LOGW("admin", "Invalid Master PIN format. Must be 6 digits.");
              }
 
   - platform: template
-    name: "Set User PIN"
+    name: "Set User PIN (4-Digit)"
     id: set_user_pin_input
     mode: TEXT
     optimistic: true
@@ -129,58 +143,23 @@ text:
     on_value:
       then:
         - lambda: |-
-            if (id(admin_mode)) {
-              id(user_pin) = x;
-              ESP_LOGI("admin", "User PIN updated to: %s", x.c_str());
-            } else {
-              ESP_LOGW("admin", "Cannot set User PIN: Admin not unlocked");
-            }
+            id(user_pin) = x;
+            ESP_LOGI("admin", "User PIN updated to: %s", x.c_str());
 
 button:
-  - platform: template
-    name: "Unlock Admin Mode"
-    id: unlock_admin_btn
-    on_press:
-      - lambda: |-
-          // This button is just a trigger, the text input logic handles the check.
-          // Or we could move the check here if we want a "Submit" style.
-          // For now the text input handler does it immediately.
-          ESP_LOGI("admin", "Admin Unlock Requested (check Input field)");
-
-  - platform: template
-    name: "Toggle Card Registration"
-    id: toggle_registration_btn
-    on_press:
-      - lambda: |-
-          if (id(admin_mode)) {
-            id(registration_mode) = !id(registration_mode);
-            if (id(registration_mode)) {
-               ESP_LOGI("admin", "Registration Mode ENABLED");
-            } else {
-               ESP_LOGI("admin", "Registration Mode DISABLED");
-            }
-          } else {
-            ESP_LOGW("admin", "Cannot toggle registration: Admin not unlocked");
-          }
-
   - platform: template
     name: "Clear All Cards"
     id: clear_cards_btn
     on_press:
       - lambda: |-
-          if (id(admin_mode)) {
-            id(auth_tags) = "";
-            ESP_LOGI("admin", "All cards CLEARED");
-          } else {
-             ESP_LOGW("admin", "Cannot clear cards: Admin not unlocked");
-          }
+          id(auth_tags) = "";
+          ESP_LOGI("admin", "All cards CLEARED");
 
 text_sensor:
   - platform: template
     name: "Master PIN Display"
     id: master_pin_display
-    # Updated via on_boot to be static and immediate
-
+    # Updated via on_boot to be static and immediate or via Set Master PIN
 
   - platform: template
     name: "Registered Tags"
@@ -199,10 +178,21 @@ text_sensor:
             std::string msg = x;
             if (msg.find("PIN:") == 0) {
               std::string pin = msg.substr(4);
-              if (pin == id(user_pin)) {
-                 id(start_session).execute();
+              if (pin.length() == 6) {
+                 int pin_int = atoi(pin.c_str());
+                 if (pin_int == id(master_pin)) {
+                    id(start_registration_session).execute();
+                 } else {
+                    ESP_LOGW("auth", "Invalid Master PIN");
+                 }
+              } else if (pin.length() == 4) {
+                 if (pin == id(user_pin)) {
+                    id(start_session).execute();
+                 } else {
+                    ESP_LOGW("auth", "Invalid User PIN");
+                 }
               } else {
-                 ESP_LOGW("auth", "Invalid PIN: %s", pin.c_str());
+                 ESP_LOGW("auth", "Invalid PIN Length");
               }
             } else if (msg.find("TAG:") == 0) {
               std::string tag = msg.substr(4);
@@ -215,6 +205,11 @@ text_sensor:
                      }
                      id(auth_tags) += tag;
                      ESP_LOGI("auth", "New TAG Registered: %s", tag.c_str());
+                     // Close session on success? Or allow multiple? User said "close the session"
+                     id(registration_mode) = false;
+                     id(start_registration_session).stop();
+                     ESP_LOGI("auth", "Registration Session Closed");
+
                  } else {
                      ESP_LOGI("auth", "TAG already registered: %s", tag.c_str());
                  }
