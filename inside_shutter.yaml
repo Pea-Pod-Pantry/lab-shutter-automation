@@ -112,6 +112,30 @@ script:
           value: 'false'
       - logger.log: "Registration Session ENDED"
 
+  - id: safe_open
+    mode: RESTART
+    then:
+      - switch.turn_off: motor_down_relay
+      - switch.turn_off: motor_stop_relay
+      - delay: 100ms
+      - switch.turn_on: motor_up_relay
+
+  - id: safe_close
+    mode: RESTART
+    then:
+      - switch.turn_off: motor_up_relay
+      - switch.turn_off: motor_stop_relay
+      - delay: 100ms
+      - switch.turn_on: motor_down_relay
+
+  - id: safe_stop
+    mode: RESTART
+    then:
+      - switch.turn_off: motor_up_relay
+      - switch.turn_off: motor_down_relay
+      - delay: 100ms
+      - switch.turn_on: motor_stop_relay
+
 text:
   - platform: template
     name: "Set Master PIN (6-Digit)"
@@ -246,11 +270,11 @@ cover:
     name: "Shutter Control"
     id: shutter_cover
     open_action:
-      - switch.turn_on: motor_up_relay
+      - script.execute: safe_open
     close_action:
-      - switch.turn_on: motor_down_relay
+      - script.execute: safe_close
     stop_action:
-      - switch.turn_on: motor_stop_relay
+      - script.execute: safe_stop
     optimistic: true
 
 switch:
